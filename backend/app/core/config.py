@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     llm_api_key: str | None = None
     llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
+    llm_max_cost_usd: float = 0.05
     cors_origins: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(
