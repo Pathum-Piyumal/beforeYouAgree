@@ -17,6 +17,9 @@ RiskCategory = Literal[
     "commitment",
 ]
 Severity = Literal["low", "moderate", "high", "critical"]
+TimelineTiming = Literal["absolute", "relative", "recurring", "unresolved"]
+TimelineStatus = Literal["resolved", "unresolved"]
+OffsetDirection = Literal["before", "after"]
 
 
 class AnalysisSection(BaseModel):
@@ -58,14 +61,48 @@ class Coverage(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class AnalysisReviewFlag(BaseModel):
+    code: str
+    message: str
+    source_section_id: str | None = None
+
+
+class AnalysisMetadata(BaseModel):
+    model_id: str
+    prompt_version: str
+    extraction_schema_version: str
+    provider_attempts: int = Field(ge=1)
+    estimated_cost_usd: float = Field(ge=0)
+
+
+class CategoryScoreResponse(BaseModel):
+    category: RiskCategory
+    weight: float = Field(ge=0, le=1)
+    assessed: bool
+    score: int | None = Field(default=None, ge=0, le=100)
+    contribution: float | None = Field(default=None, ge=0, le=100)
+    finding_count: int = Field(ge=0)
+    explanation: str
+
+
 class TimelineItem(BaseModel):
     kind: str
+    timing: TimelineTiming = "relative"
+    status: TimelineStatus = "resolved"
     relative_to: str | None = None
+    offset_direction: OffsetDirection | None = None
     offset_days: int | None = Field(default=None, ge=0)
     amount: str | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     recurrence: str | None = None
     date: Date | None = None
+    timezone: str | None = Field(default=None, max_length=64)
+    source_section_id: str | None = Field(default=None, max_length=80)
+    source_risk_types: list[str] = Field(default_factory=list, max_length=20)
+    source_url: AnyHttpUrl | None = None
+    evidence_quote: str | None = Field(default=None, max_length=4_000)
+    assumptions: list[str] = Field(default_factory=list, max_length=10)
+    unresolved_reason: str | None = Field(default=None, max_length=500)
 
 
 class AnalysisResponse(BaseModel):
@@ -75,5 +112,11 @@ class AnalysisResponse(BaseModel):
     risk_band: RiskBand | None = None
     score_version: str | None = None
     coverage: Coverage
+    review_flags: list[AnalysisReviewFlag] = Field(default_factory=list)
+    metadata: AnalysisMetadata | None = None
+    score_coverage: Literal["complete", "partial", "insufficient"] = "insufficient"
+    category_scores: list[CategoryScoreResponse] = Field(default_factory=list)
+    dominant_contributions: list[str] = Field(default_factory=list)
+    score_explanation: str | None = None
     findings: list[FindingResponse] = Field(default_factory=list)
     timeline: list[TimelineItem] = Field(default_factory=list)
