@@ -24,7 +24,9 @@ def test_mock_analysis_returns_source_linked_finding_and_timeline() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["score_version"] == "mock-v1"
+    assert body["score_version"] == "risk-v1"
+    assert body["score"] == 75
+    assert body["score_coverage"] == "partial"
     assert body["findings"][0]["evidence"]["section_id"] == "pricing-1"
     assert "$49.99" in body["findings"][0]["evidence"]["quote"]
     assert body["timeline"][0]["offset_days"] == 7
