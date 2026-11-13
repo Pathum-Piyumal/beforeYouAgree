@@ -1,5 +1,10 @@
 import type { PageContext } from '../messaging/protocol'
-import type { AnalysisRequest, AnalysisResponse, ApiErrorPayload } from './types'
+import {
+  parseAnalysisResponse,
+  type AnalysisRequest,
+  type AnalysisResponse,
+  type ApiErrorPayload,
+} from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
 
@@ -50,7 +55,14 @@ export async function requestAnalysis(context: PageContext): Promise<AnalysisRes
       )
     }
 
-    return payload as AnalysisResponse
+    try {
+      return parseAnalysisResponse(payload)
+    } catch {
+      throw new ApiRequestError(
+        'The analysis service returned an invalid response.',
+        'INVALID_API_RESPONSE',
+      )
+    }
   } catch (error) {
     if (error instanceof ApiRequestError) throw error
     if (error instanceof DOMException && error.name === 'AbortError') {
