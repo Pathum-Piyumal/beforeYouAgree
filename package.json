@@ -5,6 +5,7 @@
   "scripts": {
     "build": "npm run build --prefix extension",
     "dev": "npm run dev --prefix extension",
-    "lint": "npm run lint --prefix extension"
+    "lint": "npm run lint --prefix extension",
+    "typecheck": "npm run typecheck --prefix extension"
   }
 }

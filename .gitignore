@@ -4,6 +4,11 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+htmlcov/
 
 # Env
 .env
@@ -14,6 +19,7 @@ node_modules/
 dist/
 build/
 .vite/
+*.tsbuildinfo
 
 # Editor
 .vscode/
@@ -25,3 +31,6 @@ build/
 
 # Docker
 *.log
+
+# Generated extension package
+extension/*.zip
