@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "before-you-agree-backend"
+version = "0.1.0"
+description = "FastAPI backend for Before You Agree"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic==1.20.0",
+  "fastapi==0.143.0",
+  "pydantic-settings==2.15.0",
+  "psycopg2-binary==2.9.13",
+  "SQLAlchemy==2.0.51",
+  "uvicorn[standard]==0.54.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
