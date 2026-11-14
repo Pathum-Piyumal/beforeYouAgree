@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: before_you_agree
+      POSTGRES_USER: before_you_agree
+      POSTGRES_PASSWORD: before_you_agree
+    ports:
+      - "5432:5432"
+    volumes:
+      - before-you-agree-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U before_you_agree -d before_you_agree"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  before-you-agree-postgres:
