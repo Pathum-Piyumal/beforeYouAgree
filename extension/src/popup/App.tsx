@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 
 import { requestAnalysis } from '../api/client'
-import type { AnalysisResponse } from '../api/types'
+import { parseAnalysisResponse, type AnalysisResponse } from '../api/types'
 import type {
   BackgroundToPopupResponse,
   PageContext,
   PopupToBackgroundMessage,
 } from '../messaging/protocol'
+import { AnalysisReport } from './components/AnalysisReport'
 import './App.css'
 
-type ViewState =
-  | { status: 'idle'; context: PageContext | null }
+type PageView =
   | { status: 'loading'; context: PageContext | null }
   | { status: 'ready'; context: PageContext }
   | { status: 'error'; context: PageContext | null; message: string }
@@ -18,8 +18,12 @@ type ViewState =
 type AnalysisView =
   | { status: 'idle'; result: null; message: null }
   | { status: 'loading'; result: null; message: null }
-  | { status: 'ready'; result: AnalysisResponse; message: null }
+  | { status: 'success' | 'partial' | 'empty'; result: AnalysisResponse; message: null }
   | { status: 'error'; result: null; message: string }
+
+type CompletedAnalysisStatus = 'success' | 'partial' | 'empty'
+
+const cacheTtlMilliseconds = 5 * 60 * 1000
 
 function requestPageContext(): Promise<BackgroundToPopupResponse> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
@@ -36,26 +40,70 @@ function requestPageContext(): Promise<BackgroundToPopupResponse> {
     type: 'GET_ACTIVE_PAGE_CONTEXT',
     requestId: crypto.randomUUID(),
   }
-
   return chrome.runtime.sendMessage(message)
 }
 
+function cacheKey(url: string): string {
+  return `before-you-agree:analysis:${url}`
+}
+
+function loadCachedAnalysis(url: string): AnalysisResponse | null {
+  try {
+    const cached = sessionStorage.getItem(cacheKey(url))
+    if (!cached) return null
+    const record = JSON.parse(cached) as { expiresAt?: unknown; result?: unknown }
+    if (typeof record.expiresAt !== 'number' || record.expiresAt <= Date.now()) {
+      sessionStorage.removeItem(cacheKey(url))
+      return null
+    }
+    return parseAnalysisResponse(record.result)
+  } catch {
+    sessionStorage.removeItem(cacheKey(url))
+    return null
+  }
+}
+
+function saveCachedAnalysis(url: string, result: AnalysisResponse): void {
+  try {
+    sessionStorage.setItem(
+      cacheKey(url),
+      JSON.stringify({ expiresAt: Date.now() + cacheTtlMilliseconds, result }),
+    )
+  } catch {
+    return
+  }
+}
+
+function resultState(result: AnalysisResponse): CompletedAnalysisStatus {
+  if (result.status === 'insufficient_evidence' || result.findings.length === 0) return 'empty'
+  return result.status === 'partial' || result.score_coverage !== 'complete' ? 'partial' : 'success'
+}
+
 export default function App() {
-  const [view, setView] = useState<ViewState>({ status: 'loading', context: null })
-  const [analysis, setAnalysis] = useState<AnalysisView>({ status: 'idle', result: null, message: null })
+  const [pageView, setPageView] = useState<PageView>({ status: 'loading', context: null })
+  const [analysisView, setAnalysisView] = useState<AnalysisView>({
+    status: 'idle',
+    result: null,
+    message: null,
+  })
 
   const inspectPage = async () => {
-    setView((current) => ({ status: 'loading', context: current.context }))
+    setPageView((current) => ({ status: 'loading', context: current.context }))
 
     try {
       const response = await requestPageContext()
       if (response.ok) {
-        setView({ status: 'ready', context: response.data })
+        setPageView({ status: 'ready', context: response.data })
+        setAnalysisView({ status: 'idle', result: null, message: null })
       } else {
-        setView((current) => ({ status: 'error', context: current.context, message: response.error.message }))
+        setPageView((current) => ({
+          status: 'error',
+          context: current.context,
+          message: response.error.message,
+        }))
       }
     } catch {
-      setView((current) => ({
+      setPageView((current) => ({
         status: 'error',
         context: current.context,
         message: 'The extension could not reach the active page.',
@@ -63,15 +111,25 @@ export default function App() {
     }
   }
 
-  const analyzePage = async () => {
-    if (!view.context) return
+  const analyzePage = async (forceRefresh = false) => {
+    const context = pageView.context
+    if (!context || analysisView.status === 'loading') return
 
-    setAnalysis({ status: 'loading', result: null, message: null })
+    if (!forceRefresh) {
+      const cached = loadCachedAnalysis(context.url)
+      if (cached) {
+        setAnalysisView({ status: resultState(cached), result: cached, message: null })
+        return
+      }
+    }
+
+    setAnalysisView({ status: 'loading', result: null, message: null })
     try {
-      const result = await requestAnalysis(view.context)
-      setAnalysis({ status: 'ready', result, message: null })
+      const result = await requestAnalysis(context)
+      saveCachedAnalysis(context.url, result)
+      setAnalysisView({ status: resultState(result), result, message: null })
     } catch (error) {
-      setAnalysis({
+      setAnalysisView({
         status: 'error',
         result: null,
         message: error instanceof Error ? error.message : 'The analysis service is unavailable.',
@@ -80,21 +138,20 @@ export default function App() {
   }
 
   useEffect(() => {
-    let mounted = true
+    let active = true
 
     const loadPageContext = async () => {
       try {
         const response = await requestPageContext()
-        if (!mounted) return
-
+        if (!active) return
         if (response.ok) {
-          setView({ status: 'ready', context: response.data })
+          setPageView({ status: 'ready', context: response.data })
         } else {
-          setView({ status: 'error', context: null, message: response.error.message })
+          setPageView({ status: 'error', context: null, message: response.error.message })
         }
       } catch {
-        if (mounted) {
-          setView({
+        if (active) {
+          setPageView({
             status: 'error',
             context: null,
             message: 'The extension could not reach the active page.',
@@ -104,71 +161,66 @@ export default function App() {
     }
 
     void loadPageContext()
-
-    return () => {
-      mounted = false
-    }
+    return () => { active = false }
   }, [])
 
-  const context = view.context
+  const context = pageView.context
+  const result = analysisView.status === 'success' || analysisView.status === 'partial' || analysisView.status === 'empty'
+    ? analysisView.result
+    : null
 
   return (
-    <main className="popup-shell">
+    <main className="popup-shell" aria-busy={pageView.status === 'loading' || analysisView.status === 'loading'}>
       <header className="popup-header">
         <div className="brand-mark" aria-hidden="true">✓</div>
         <div>
           <p className="eyebrow">BEFORE YOU AGREE</p>
-          <h1>Page check</h1>
+          <h1>Understand this page</h1>
         </div>
       </header>
 
       <section className="page-card" aria-live="polite">
         <p className="eyebrow">ACTIVE PAGE</p>
-        <h2>{context?.domain ?? 'Checking active tab…'}</h2>
+        <h2>{context?.domain ?? 'Checking active tab...'}</h2>
         <p className="page-title">{context?.title ?? 'Waiting for the page context'}</p>
-        {context && <p className="page-meta">{context.textLength.toLocaleString()} visible characters</p>}
+        {context && <p className="page-meta">{context.textLength.toLocaleString()} visible characters ready to review</p>}
       </section>
 
-      {view.status === 'error' && <p className="error-message" role="alert">{view.message}</p>}
-      {view.status === 'ready' && <p className="success-message">Page context received from the content script.</p>}
+      {pageView.status === 'error' && <p className="error-message" role="alert">{pageView.message}</p>}
 
-      <button className="primary-button" onClick={inspectPage} disabled={view.status === 'loading'}>
-        {view.status === 'loading' ? 'Inspecting…' : 'Inspect page'}
-      </button>
+      <div className="action-row">
+        <button className="secondary-button" type="button" onClick={inspectPage} disabled={pageView.status === 'loading'}>
+          {pageView.status === 'loading' ? 'Inspecting...' : 'Inspect page'}
+        </button>
+        <button
+          className="primary-button"
+          type="button"
+          onClick={() => void analyzePage(analysisView.status !== 'idle')}
+          disabled={!context || pageView.status === 'loading' || analysisView.status === 'loading'}
+        >
+          {analysisView.status === 'loading' ? 'Analyzing...' : result ? 'Analyze again' : 'Analyze page'}
+        </button>
+      </div>
 
-      <button
-        className="secondary-button"
-        onClick={analyzePage}
-        disabled={!context || view.status === 'loading' || analysis.status === 'loading'}
-      >
-        {analysis.status === 'loading' ? 'Analyzing…' : 'Analyze preview'}
-      </button>
-
-      {analysis.status === 'error' && <p className="error-message" role="alert">{analysis.message}</p>}
-      {analysis.status === 'ready' && (
-        <section className="analysis-card" aria-live="polite">
-          <div className="analysis-heading">
-            <div>
-              <p className="eyebrow">MOCK ANALYSIS</p>
-              <h2>{analysis.result.score ?? '—'}/100</h2>
-            </div>
-            <span className="risk-badge">{analysis.result.risk_band ?? 'Not assessed'}</span>
-          </div>
-          {analysis.result.findings.map((finding) => (
-            <article className="finding" key={`${finding.evidence.section_id}-${finding.risk_type}`}>
-              <strong>{finding.risk_type.replaceAll('_', ' ')}</strong>
-              <p>{finding.consequence}</p>
-              <blockquote>{finding.evidence.quote}</blockquote>
-            </article>
-          ))}
-          {analysis.result.coverage.warnings.map((warning) => (
-            <p className="coverage-warning" key={warning}>{warning}</p>
-          ))}
+      {analysisView.status === 'loading' && (
+        <section className="loading-state" role="status">
+          <span className="loading-dot" aria-hidden="true" />
+          <div><strong>Analyzing page terms</strong><p>Looking for supported consequences and commitments.</p></div>
         </section>
       )}
 
+      {analysisView.status === 'error' && (
+        <section className="error-state" role="alert">
+          <strong>Analysis could not be completed</strong>
+          <p>{analysisView.message}</p>
+          <button className="secondary-button" type="button" onClick={() => void analyzePage(true)} disabled={!context}>Retry analysis</button>
+        </section>
+      )}
+
+      {result && <AnalysisReport result={result} />}
+
       <p className="disclaimer">
-        Analysis is informational support, not legal advice. This chunk uses a deterministic mock response.
+        This is an informational aid, not legal advice. It can miss clauses or misunderstand incomplete page text.
       </p>
     </main>
   )
