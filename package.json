@@ -1,0 +1,11 @@
+{
+  "name": "before-you-agree",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix extension",
+    "dev": "npm run dev --prefix extension",
+    "lint": "npm run lint --prefix extension",
+    "typecheck": "npm run typecheck --prefix extension"
+  }
+}
