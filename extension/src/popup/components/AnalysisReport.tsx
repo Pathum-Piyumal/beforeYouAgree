@@ -1,14 +1,16 @@
 import type { AnalysisResponse } from '../../api/types'
 import { CategoryBreakdown } from './CategoryBreakdown'
 import { CommitmentTimeline } from './CommitmentTimeline'
+import type { TimelineEvent } from './timelineText'
 import { FindingCard } from './FindingCard'
 import { RiskScoreGauge } from './RiskScoreGauge'
 
 type AnalysisReportProps = {
   result: AnalysisResponse
+  onSetReminder: (event: TimelineEvent) => void
 }
 
-export function AnalysisReport({ result }: AnalysisReportProps) {
+export function AnalysisReport({ result, onSetReminder }: AnalysisReportProps) {
   const warnings = [...result.coverage.warnings, ...result.review_flags.map((flag) => flag.message)]
   const hasFindings = result.findings.length > 0
 
@@ -45,12 +47,8 @@ export function AnalysisReport({ result }: AnalysisReportProps) {
         )}
       </section>
 
-      <CommitmentTimeline timeline={result.timeline} />
+      <CommitmentTimeline timeline={result.timeline} onSetReminder={onSetReminder} />
 
-      <div className="placeholder-actions" aria-label="Future actions">
-        <button type="button" disabled title="Reminder support arrives in M2.">Set reminder</button>
-        <button type="button" disabled title="Full analysis view arrives in M2.">View full analysis</button>
-      </div>
     </section>
   )
 }

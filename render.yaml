@@ -1,0 +1,45 @@
+# Demo Blueprint. Inspect/reuse existing account resources before creating anything.
+# Free Postgres expires; see docs/render-deployment.md before applying.
+services:
+  - type: web
+    name: before-you-agree-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./infra/backend.Dockerfile
+    dockerContext: .
+    dockerCommand: python -m scripts.render_start
+    healthCheckPath: /health/ready
+    autoDeployTrigger: "off"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: before-you-agree-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: APP_ENVIRONMENT
+        value: production
+      - key: LLM_PROVIDER
+        value: mock
+      - key: CORS_ORIGINS
+        sync: false
+  - type: web
+    name: before-you-agree-dashboard
+    runtime: static
+    buildCommand: npm ci --prefix extension && npm run build:dashboard --prefix extension
+    staticPublishPath: ./extension/dashboard-dist
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_BASE_URL
+        sync: false
+databases:
+  - name: before-you-agree-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "16"
+    databaseName: before_you_agree
+    user: before_you_agree
+    ipAllowList: []

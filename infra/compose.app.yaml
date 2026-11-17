@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: before_you_agree
+      POSTGRES_USER: before_you_agree
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the compose environment file}
+    volumes:
+      - app-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U before_you_agree -d before_you_agree"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/backend.Dockerfile
+    env_file: ../backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://before_you_agree:${POSTGRES_PASSWORD}@postgres:5432/before_you_agree
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    build:
+      context: ..
+      dockerfile: infra/backend.Dockerfile
+    env_file: ../backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://before_you_agree:${POSTGRES_PASSWORD}@postgres:5432/before_you_agree
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  reminders:
+    build:
+      context: ..
+      dockerfile: infra/backend.Dockerfile
+    env_file: ../backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://before_you_agree:${POSTGRES_PASSWORD}@postgres:5432/before_you_agree
+    command: ["python", "-m", "scripts.reminders", "--loop"]
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  app-postgres:

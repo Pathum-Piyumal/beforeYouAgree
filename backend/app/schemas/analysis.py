@@ -3,8 +3,7 @@ from __future__ import annotations
 from datetime import date as Date
 from typing import Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field, HttpUrl, model_validator
-
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 AnalysisStatus = Literal["complete", "partial", "insufficient_evidence", "failed"]
 RiskBand = Literal["low", "moderate", "high", "very_high"]
@@ -23,6 +22,7 @@ OffsetDirection = Literal["before", "after"]
 
 
 class AnalysisSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     section_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9._:-]+$")
     heading: str | None = Field(default=None, max_length=200)
     text: str = Field(min_length=1, max_length=12_000)
@@ -30,6 +30,7 @@ class AnalysisSection(BaseModel):
 
 
 class AnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     source_url: HttpUrl
     save_to_history: bool = False
     sections: list[AnalysisSection] = Field(min_length=1, max_length=50)
@@ -39,6 +40,15 @@ class AnalysisRequest(BaseModel):
         total_length = sum(len(section.text) for section in self.sections)
         if total_length > 50_000:
             raise ValueError("Combined section text exceeds the 50,000 character limit")
+        if len(self.model_dump_json()) > 55_000:
+            raise ValueError("Source metadata and text exceed the analysis input budget")
+        if len({section.section_id for section in self.sections}) != len(self.sections):
+            raise ValueError("Section IDs must be unique")
+        if any(
+            url.username or url.password
+            for url in [self.source_url, *(section.source_url for section in self.sections)]
+        ):
+            raise ValueError("Source URLs must not contain credentials")
         return self
 
 

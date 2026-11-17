@@ -4,7 +4,6 @@ import math
 from dataclasses import dataclass
 from typing import Literal, Sequence
 
-
 RiskCategory = Literal[
     "financial",
     "subscription",
@@ -137,7 +136,9 @@ def score_findings(findings: Sequence[ScoringFinding]) -> RiskAssessment:
         findings_by_category[finding.category].append(finding)  # type: ignore[index]
 
     assessed_categories = [
-        category for category, category_findings in findings_by_category.items() if category_findings
+        category
+        for category, category_findings in findings_by_category.items()
+        if category_findings
     ]
     assessed_weight = sum(CATEGORY_WEIGHTS[category] for category in assessed_categories)
     category_scores: list[CategoryScore] = []

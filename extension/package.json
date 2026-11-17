@@ -4,9 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node --test e2e/*.test.mjs",
+    "test:integration": "node --test integration/*.test.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "lint": "oxlint src vite.config.js",
+    "build:dashboard": "tsc --noEmit && vite build --config vite.dashboard.config.js",
+    "lint": "oxlint src vite.config.js vite.dashboard.config.js",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
@@ -22,6 +26,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "lucide-react": "^1.54.0",
     "oxlint": "^1.81.0",
+    "playwright": "^1.65.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^8.3.0"

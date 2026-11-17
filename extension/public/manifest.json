@@ -5,12 +5,14 @@
   "description": "Helps you inspect the terms, pricing, and commitments on a page.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "action": {
     "default_popup": "index.html",
     "default_title": "Before You Agree"
   },
+  "host_permissions": ["http://localhost:8000/*"],
   "background": {
     "service_worker": "background.js"
   },

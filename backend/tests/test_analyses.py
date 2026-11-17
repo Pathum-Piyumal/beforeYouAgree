@@ -2,7 +2,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-
 client = TestClient(app)
 
 
@@ -15,7 +14,10 @@ def test_mock_analysis_returns_source_linked_finding_and_timeline() -> None:
                 {
                     "section_id": "pricing-1",
                     "heading": "Trial terms",
-                    "text": "7-day free trial. After the trial, $49.99 per month will be charged automatically until cancellation.",
+                    "text": (
+                        "7-day free trial. After the trial, $49.99 per month will be charged "
+                        "automatically until cancellation."
+                    ),
                     "source_url": "https://example.test/trial",
                 }
             ],

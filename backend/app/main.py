@@ -4,16 +4,21 @@ from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.api.v1.analyses import router as analyses_router
+from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
+from app.api.v1.history import router as history_router
+from app.api.v1.reminders import router as reminders_router
+from app.api.v1.users import router as users_router
+from app.core.body_limit import BodyLimitMiddleware
 from app.core.config import settings
 
-
 app = FastAPI(title=settings.app_name, version="0.1.0")
+app.add_middleware(BodyLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,3 +85,7 @@ def legacy_health() -> dict[str, str]:
 
 app.include_router(health_router)
 app.include_router(analyses_router, prefix=settings.api_prefix)
+app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(users_router, prefix=settings.api_prefix)
+app.include_router(history_router, prefix=settings.api_prefix)
+app.include_router(reminders_router, prefix=settings.api_prefix)

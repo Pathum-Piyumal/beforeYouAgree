@@ -21,13 +21,21 @@ function getDomain(url: string): string {
 }
 
 function isVisible(element: HTMLElement): boolean {
-  const styles = window.getComputedStyle(element)
-  return styles.display !== 'none' && styles.visibility !== 'hidden' && styles.opacity !== '0'
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    const styles = window.getComputedStyle(current)
+    if (current.hidden || current.getAttribute('aria-hidden') === 'true'
+      || styles.display === 'none' || styles.visibility === 'hidden' || styles.opacity === '0') return false
+    if (current.tagName === 'DETAILS' && !current.hasAttribute('open')) return false
+  }
+  return true
 }
 
 function isBoilerplate(element: HTMLElement): boolean {
   if (element.closest(EXCLUDED_SELECTOR)) return true
-  return BOILERPLATE_MARKER.test(`${element.id} ${element.className}`)
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    if (BOILERPLATE_MARKER.test(`${current.id} ${current.className}`)) return true
+  }
+  return false
 }
 
 function createSection(sectionId: number, heading: string | null, blocks: string[], sourceUrl: string): PageSection {
@@ -66,7 +74,12 @@ export function extractSections(document: Document): PageSection[] {
       flush()
       currentHeading = text.slice(0, 200)
     } else {
-      currentBlocks.push(text)
+      if (element.tagName === 'LI' && element.querySelector('p, li')) continue
+      for (let offset = 0; offset < text.length; offset += MAX_SECTION_LENGTH) {
+        const chunk = text.slice(offset, offset + MAX_SECTION_LENGTH)
+        if (normalizeWhitespace(currentBlocks.join(' ')).length + chunk.length + 1 > MAX_SECTION_LENGTH) flush()
+        currentBlocks.push(chunk)
+      }
     }
 
     if (sections.length >= MAX_SECTIONS) break
@@ -75,14 +88,13 @@ export function extractSections(document: Document): PageSection[] {
 
   if (sections.length > 0) return limitSections(sections)
 
-  const fallback = normalizeWhitespace(document.body?.innerText || '')
-  if (!fallback) return []
-  return limitSections([createSection(1, document.title.trim() || null, [fallback], sourceUrl)])
+  // Never fall back to the entire body: that can include account details and form values.
+  return []
 }
 
 function limitSections(sections: PageSection[]): PageSection[] {
   let remaining = MAX_TOTAL_LENGTH
-  return sections.flatMap((section) => {
+  return sections.slice(0, MAX_SECTIONS).flatMap((section) => {
     if (remaining <= 0) return []
     const text = section.text.slice(0, Math.min(MAX_SECTION_LENGTH, remaining))
     remaining -= text.length
@@ -102,5 +114,9 @@ export function extractPageContext(document: Document): PageContext {
     textPreview,
     textLength,
     sections,
+    policyLinks: Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))
+      .filter((link) => isVisible(link) && /terms|privacy|refund|cancel|subscription/i.test(`${link.textContent} ${link.href}`))
+      .filter((link) => /^https?:/.test(link.href)).slice(0, 12)
+      .map((link) => ({ label: normalizeWhitespace(link.textContent || 'Review linked policy').slice(0, 100), url: link.href })),
   }
 }

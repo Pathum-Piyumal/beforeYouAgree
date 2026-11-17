@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "build": "npm run build --prefix extension",
+    "build:dashboard": "npm run build:dashboard --prefix extension",
+    "test": "npm test --prefix extension",
+    "test:e2e": "npm run test:e2e --prefix extension",
+    "test:integration": "npm run test:integration --prefix extension",
     "dev": "npm run dev --prefix extension",
     "lint": "npm run lint --prefix extension",
     "typecheck": "npm run typecheck --prefix extension"

@@ -3,6 +3,16 @@
 Before You Agree is an AI-assisted browser extension that helps people understand
 the consequences, risks, and future commitments in online agreements.
 
+The local release includes guest analysis with reviewed-text consent, manual
+input, evidence-backed reports, optional OpenAI extraction, accounts, saved
+history, profile editing, account deletion, and both browser-local and account
+reminders. The standalone dashboard builds separately from the extension.
+
+See the [runbook](docs/runbook.md) for complete setup, container startup,
+verification, hosted-provider configuration and release packaging. Also see the
+[privacy notice](docs/privacy.md), [architecture](docs/architecture.md),
+[synthetic evaluation](docs/ai-evaluation.md), and [demo walkthrough](docs/demo.md).
+
 The repository is organized as a small monorepo:
 
 - `extension/` — React, TypeScript, Vite, and Chrome Manifest V3 extension.
@@ -33,6 +43,7 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -48,6 +59,7 @@ The liveness and database readiness endpoints are:
 cd extension
 npm ci
 npm run build
+npm run build:dashboard
 ```
 
 Load `extension/dist` as an unpacked extension in Chrome. Open a normal

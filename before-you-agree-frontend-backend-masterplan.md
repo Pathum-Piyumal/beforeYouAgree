@@ -9,6 +9,14 @@
 
 ## 0. How to use this plan
 
+**Implementation update — 2026-11-17:** The local release is implemented with
+separate extension/dashboard builds, optional hosted extraction, accounts,
+history, profile/deletion, and local/account reminders. See
+[release status](docs/status.md) for verified checks, artifacts, documented
+engineering decisions and owner-dependent acceptance items. Unchecked items
+below remain conservative where they require live credentials, manual Chrome
+interaction, independent evaluation, publication or human review.
+
 This is the implementation source of truth for the **frontend (Chrome extension + web dashboard)** and **backend (FastAPI + AI pipeline + database)**. Follow its phases in order, but implement end-to-end features rather than building two disconnected applications. Check off tasks only when their acceptance criteria and tests pass.
 
 **Source alignment:** The supplied project proposal specifies the product concept, six risk categories, risk-score bands, commitment timeline, reminders, dashboard, React/TypeScript extension, FastAPI, PostgreSQL, JWT, and a five-feature MVP. The supplied `instruction.txt` suggests twelve development chunks. This file expands those foundations into a detailed engineering execution plan. API schemas, libraries beyond the proposed stack, weights, measurable targets, and schedule are **recommendations**, not finalized commitments from the proposal.
@@ -29,23 +37,23 @@ This is the implementation source of truth for the **frontend (Chrome extension 
 
 ### 1.1 MVP — develop first
 
-- [ ] Chrome Manifest V3 extension popup with manual Analyze action.
-- [ ] Page extraction and text cleaning (including linked policies only with appropriate permission).
-- [ ] FastAPI endpoint accepting bounded extracted content.
-- [ ] LLM consequence extraction into validated structured JSON.
-- [ ] Evidence citations/snippets and uncertainty/insufficient-information states.
-- [ ] Deterministic 0–100 risk score with six-category breakdown.
-- [ ] Plain-language consequences and a commitment timeline.
-- [ ] Loading, error, retry, and unsupported-page UI states.
+- [x] Chrome Manifest V3 extension popup with manual Analyze action.
+- [x] Page extraction and text cleaning (linked policies open separately without automatic fetching).
+- [x] FastAPI endpoint accepting bounded extracted content.
+- [x] Configurable structured extraction adapter with mock HTTP tests; live access remains an owner check.
+- [x] Evidence citations/snippets and uncertainty/insufficient-information states.
+- [x] Deterministic 0–100 risk score with six-category breakdown.
+- [x] Plain-language consequences and a commitment timeline.
+- [x] Loading, error, retry, and unsupported-page UI states.
 
 **MVP not required:** login, dashboard, persistent history, reminders, language translation, automated pre-click blocking. Guest mode is recommended for a low-friction demo.
 
 ### 1.2 Full project release
 
-- [ ] Registration, login, logout, profile, and secure token lifecycle.
-- [ ] Save/delete analysis history (opt-in storage).
-- [ ] Create/edit/cancel reminders and deliver notifications.
-- [ ] Web dashboard showing history, score distribution, commitments and reminders.
+- [x] Registration, login, logout, profile, and secure token lifecycle.
+- [x] Save/delete analysis history (opt-in storage).
+- [x] Create/edit/cancel reminders and deliver durable in-app notices with separate acknowledgement.
+- [x] Web dashboard showing history, score distribution, commitments and reminders.
 - [ ] Minimal administration/operational telemetry; production deployment and documentation.
 
 ### 1.3 Out of scope / later
@@ -240,8 +248,8 @@ Naming is illustrative. Avoid extra abstractions before a working end-to-end sli
 - [ ] Retain section ID, heading, source URL and short quote boundaries for traceability.
 - [ ] Normalize whitespace, limit text length, deduplicate repeated blocks.
 - [ ] Handle dynamic DOM content with explicit re-scan rather than aggressive continuous surveillance.
-- [ ] Add manual paste fallback for inaccessible or low-confidence pages.
-- [ ] Let user inspect what will be sent; do not silently upload unrelated page content.
+- [x] Add manual paste fallback for inaccessible or low-confidence pages.
+- [x] Let user inspect what will be sent and confirm consent before upload.
 - [ ] Obtain permission before fetching policy pages; do not bypass access controls.
 
 **Acceptance:** At least five diverse local fixture pages (free trial, subscription, shopping refund, privacy policy, irrelevant page) yield meaningful extraction, including source metadata; private data is not inadvertently included.
@@ -364,7 +372,8 @@ The dashboard is an **M2 feature**. Build it after extension MVP unless a team m
 ### BE-03. Authentication and authorization (M2)
 
 - [ ] `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`.
-- [ ] `GET /users/me`, `PATCH /users/me` and privacy/data deletion endpoints.
+- [x] `GET /users/me` and password-confirmed `DELETE /users/me` with owned-data deletion.
+- [x] `PATCH /users/me` and dashboard form for display-name editing.
 - [ ] Hash passwords with Argon2id; rate limit auth endpoints.
 - [ ] Short-lived JWT access tokens, refresh rotation/revocation where used.
 - [ ] Backend checks record ownership on every private GET, update and delete.
@@ -456,12 +465,12 @@ The dashboard is an **M2 feature**. Build it after extension MVP unless a team m
 
 ### BE-09. Reminder service (M2)
 
-- [ ] `POST /reminders`, `GET /reminders`, `PATCH /reminders/{id}`, `DELETE /reminders/{id}`.
-- [ ] Require user confirmation of estimated event date and chosen reminder time.
-- [ ] Store timestamps UTC and user timezone for display.
-- [ ] Schedule recurring due-reminder job with DB lock/claim, retry, idempotency key and delivery states.
-- [ ] Start with in-app notifications; browser notifications only with explicit permission and a reliable delivery path.
-- [ ] Do not assert that a reminder has been delivered before notification is acknowledged.
+- [x] `POST /reminders`, `GET /reminders`, `PATCH /reminders/{id}`, `DELETE /reminders/{id}`.
+- [x] Require user confirmation of estimated event date and chosen reminder time.
+- [x] Store timestamps UTC and user timezone for display.
+- [x] Schedule due-reminder job with atomic DB claim, retry-safe state transition and idempotency keys.
+- [x] In-app notifications; desktop/email channels are outside the local release.
+- [x] Keep due delivery distinct from explicit user acknowledgement.
 
 **Acceptance:** Reminder can be created/edited/cancelled and delivered once despite job retry; invalid ownership and dates fail safely.
 

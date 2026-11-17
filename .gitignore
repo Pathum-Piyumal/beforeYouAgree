@@ -13,10 +13,13 @@ htmlcov/
 # Env
 .env
 .env.local
+infra/app.env
 
 # Node
 node_modules/
 dist/
+dashboard-dist/
+release/
 build/
 .vite/
 *.tsbuildinfo

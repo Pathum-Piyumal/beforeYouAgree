@@ -7,7 +7,6 @@ from typing import Iterable
 from app.ai.contracts import ExtractedFinding
 from app.schemas.analysis import AnalysisSection, TimelineItem
 
-
 _AMOUNT_PATTERN = re.compile(r"([$€£])\s*([0-9]+(?:\.[0-9]{1,2})?)")
 _TRIAL_PATTERN = re.compile(r"(\d+)\s*[- ]?day(?:s)?\s+(?:free\s+)?trial", re.IGNORECASE)
 _NOTICE_PATTERNS = (
@@ -79,7 +78,11 @@ def _absolute_cancellation_date(text: str) -> tuple[datetime.date | None, str | 
     named_date = _NAMED_DATE_PATTERN.search(text)
     if named_date:
         try:
-            return datetime.strptime(named_date.group(0).title(), "%B %d, %Y").date(), named_date.group(0), None
+            return (
+                datetime.strptime(named_date.group(0).title(), "%B %d, %Y").date(),
+                named_date.group(0),
+                None,
+            )
         except ValueError:
             return None, named_date.group(0), "Cancellation date is invalid and needs review."
     return None, None, None
@@ -165,7 +168,8 @@ def build_timeline(
                     timezone=timezone,
                     evidence_quote=finding.evidence_text,
                     assumptions=[
-                        "No calendar charge date was inferred because the agreement provides no start date."
+                        "No calendar charge date was inferred because the agreement "
+                        "provides no start date."
                     ],
                     **source_details,
                 )
@@ -214,9 +218,12 @@ def build_timeline(
                     offset_direction="before",
                     offset_days=notice_days,
                     timezone=timezone,
-                    evidence_quote=(notice_match.group(0) if notice_match else finding.evidence_text),
+                    evidence_quote=(
+                        notice_match.group(0) if notice_match else finding.evidence_text
+                    ),
                     assumptions=[
-                        "The renewal date is not stated, so this deadline remains relative to renewal."
+                        "The renewal date is not stated, so this deadline remains "
+                        "relative to renewal."
                     ],
                     **source_details,
                 )

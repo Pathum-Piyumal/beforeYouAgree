@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.ai.contracts import ExtractionReviewFlag, ExtractedFinding, StructuredExtraction
+import re
+from decimal import Decimal, InvalidOperation
+
+from app.ai.contracts import ExtractedFinding, ExtractionReviewFlag, StructuredExtraction
 from app.ai.prompting import prompt_injection_markers
 from app.schemas.analysis import AnalysisSection
 
@@ -43,7 +46,9 @@ def validate_extraction(
                     )
                 )
 
-    for finding in extraction.findings:
+    seen = set()
+    for original in extraction.findings:
+        finding = original.model_copy(deep=True)
         section = sections_by_id.get(finding.source_section_id)
         if section is None:
             review_flags.append(
@@ -72,6 +77,65 @@ def validate_extraction(
                 )
             )
             continue
+        signature = (
+            finding.category,
+            finding.risk_type,
+            finding.source_section_id,
+            finding.evidence_text,
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        unsupported = False
+        attributes = finding.attributes
+        if attributes.amount:
+            try:
+                amount = Decimal(attributes.amount)
+                numbers = re.findall(r"\d+(?:\.\d+)?", section.text.replace(",", ""))
+                supported = (
+                    amount.is_finite()
+                    and amount >= 0
+                    and any(Decimal(value) == amount for value in numbers)
+                )
+            except (InvalidOperation, ValueError):
+                supported = False
+            if not supported:
+                attributes.amount = None
+                unsupported = True
+        if attributes.currency:
+            currencies = {"USD": "$", "EUR": "€", "GBP": "£"}
+            if (
+                attributes.currency not in section.text.upper()
+                and currencies.get(attributes.currency, "UNSUPPORTED") not in section.text
+            ):
+                attributes.currency = None
+                unsupported = True
+        for field in ("duration_days", "notice_days"):
+            value = getattr(attributes, field)
+            if value is not None and not re.search(
+                rf"\b{value}\s*[- ]?days?\b", section.text, re.IGNORECASE
+            ):
+                setattr(attributes, field, None)
+                unsupported = True
+        for field in ("start_date", "end_date"):
+            value = getattr(attributes, field)
+            if value is not None:
+                named = f"{value.strftime('%B')} {value.day}, {value.year}"
+                if (
+                    value.isoformat() not in section.text
+                    and named.lower() not in section.text.lower()
+                ):
+                    setattr(attributes, field, None)
+                    unsupported = True
+        if unsupported:
+            review_flags.append(
+                _flag(
+                    "unsupported_claim",
+                    "Unsupported amounts, dates, or durations were removed; "
+                    "review the original clause.",
+                    finding.source_section_id,
+                )
+            )
         if finding.confidence < 0.6:
             review_flags.append(
                 _flag(
@@ -95,5 +159,5 @@ def validate_extraction(
     return StructuredExtraction(
         findings=validated_findings,
         no_finding=not validated_findings,
-        review_flags=review_flags,
+        review_flags=review_flags[:50],
     )

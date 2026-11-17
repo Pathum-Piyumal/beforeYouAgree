@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ai.mock import MockLLMProvider
+from app.ai.openai_provider import OpenAIProvider
 from app.ai.prompting import build_extraction_prompt
 from app.ai.provider import (
     LLMProvider,
@@ -43,7 +44,9 @@ async def analyze_guest_request(
     if not sections or sum(len(section.text.strip()) for section in sections) < 20:
         raise InsufficientContentError("Not enough relevant agreement text was provided.")
 
-    selected_provider = provider or MockLLMProvider()
+    selected_provider = provider or (
+        OpenAIProvider(settings) if settings.llm_provider == "openai" else MockLLMProvider()
+    )
     provider_request = ProviderRequest(
         source_url=request.source_url,
         sections=sections,

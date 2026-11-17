@@ -4,7 +4,6 @@ import json
 
 from app.schemas.analysis import AnalysisSection
 
-
 PROMPT_VERSION = "consequence-extraction-v1"
 EXTRACTION_SCHEMA_VERSION = "1"
 

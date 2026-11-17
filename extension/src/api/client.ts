@@ -1,4 +1,5 @@
 import type { PageContext } from '../messaging/protocol'
+import { account } from '../account/client'
 import {
   parseAnalysisResponse,
   type AnalysisRequest,
@@ -7,6 +8,9 @@ import {
 } from './types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '')
+const configuredTimeout = Number(import.meta.env.VITE_ANALYSIS_TIMEOUT_MS || 120_000)
+const analysisTimeout = Number.isFinite(configuredTimeout) && configuredTimeout >= 10_000
+  && configuredTimeout <= 600_000 ? configuredTimeout : 120_000
 
 export class ApiRequestError extends Error {
   readonly code: string
@@ -20,10 +24,10 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function requestAnalysis(context: PageContext): Promise<AnalysisResponse> {
+export async function requestAnalysis(context: PageContext, saveToHistory = false): Promise<AnalysisResponse> {
   const body: AnalysisRequest = {
     source_url: context.url,
-    save_to_history: false,
+    save_to_history: saveToHistory,
     sections: context.sections.map((section) => ({
       section_id: section.section_id,
       heading: section.heading ?? context.title,
@@ -32,10 +36,10 @@ export async function requestAnalysis(context: PageContext): Promise<AnalysisRes
     })),
   }
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 10_000)
+  const timeout = window.setTimeout(() => controller.abort(), analysisTimeout)
 
   try {
-    const response = await fetch(`${apiBaseUrl}/analyses`, {
+    const options: RequestInit = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -43,7 +47,10 @@ export async function requestAnalysis(context: PageContext): Promise<AnalysisRes
       },
       body: JSON.stringify(body),
       signal: controller.signal,
-    })
+    }
+    const response = saveToHistory
+      ? await account.request('/analyses', options)
+      : await fetch(`${apiBaseUrl}/analyses`, options)
     const payload = (await response.json()) as AnalysisResponse | ApiErrorPayload
 
     if (!response.ok) {
@@ -65,10 +72,10 @@ export async function requestAnalysis(context: PageContext): Promise<AnalysisRes
     }
   } catch (error) {
     if (error instanceof ApiRequestError) throw error
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
       throw new ApiRequestError('The analysis request timed out.', 'API_TIMEOUT')
     }
-    throw new ApiRequestError('The analysis service is unavailable.', 'API_UNAVAILABLE')
+    throw new ApiRequestError(error instanceof Error ? error.message : 'The analysis service is unavailable.', 'API_UNAVAILABLE')
   } finally {
     window.clearTimeout(timeout)
   }

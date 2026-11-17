@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { account, dashboardUrl, onAccountChange } from '../account/client'
+import type { UserProfile } from '../account/session'
 
 import { requestAnalysis } from '../api/client'
 import { parseAnalysisResponse, type AnalysisResponse } from '../api/types'
@@ -7,7 +9,18 @@ import type {
   PageContext,
   PopupToBackgroundMessage,
 } from '../messaging/protocol'
+import {
+  createLocalReminder,
+  deleteLocalReminder,
+  listLocalReminders,
+  updateLocalReminder,
+} from '../reminders/client'
+import type { LocalReminder } from '../reminders/types'
 import { AnalysisReport } from './components/AnalysisReport'
+import { ReminderForm, type ReminderTarget } from './components/ReminderForm'
+import { ReminderList } from './components/ReminderList'
+import { ManualInput } from './components/ManualInput'
+import { describeTimelineEvent as timelineEventDescription, type TimelineEvent } from './components/timelineText'
 import './App.css'
 
 type PageView =
@@ -22,6 +35,7 @@ type AnalysisView =
   | { status: 'error'; result: null; message: string }
 
 type CompletedAnalysisStatus = 'success' | 'partial' | 'empty'
+type ReminderComposer = { target: ReminderTarget; existingReminder: LocalReminder | null; idempotencyKey: string }
 
 const cacheTtlMilliseconds = 5 * 60 * 1000
 
@@ -43,22 +57,24 @@ function requestPageContext(): Promise<BackgroundToPopupResponse> {
   return chrome.runtime.sendMessage(message)
 }
 
-function cacheKey(url: string): string {
-  return `before-you-agree:analysis:${url}`
+async function cacheKey(context: PageContext): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify([context.url, context.sections]))
+  const hash = await crypto.subtle.digest('SHA-256', bytes)
+  return `before-you-agree:analysis:${Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
 function loadCachedAnalysis(url: string): AnalysisResponse | null {
   try {
-    const cached = sessionStorage.getItem(cacheKey(url))
+    const cached = sessionStorage.getItem(url)
     if (!cached) return null
     const record = JSON.parse(cached) as { expiresAt?: unknown; result?: unknown }
     if (typeof record.expiresAt !== 'number' || record.expiresAt <= Date.now()) {
-      sessionStorage.removeItem(cacheKey(url))
+      sessionStorage.removeItem(url)
       return null
     }
     return parseAnalysisResponse(record.result)
   } catch {
-    sessionStorage.removeItem(cacheKey(url))
+    sessionStorage.removeItem(url)
     return null
   }
 }
@@ -66,8 +82,8 @@ function loadCachedAnalysis(url: string): AnalysisResponse | null {
 function saveCachedAnalysis(url: string, result: AnalysisResponse): void {
   try {
     sessionStorage.setItem(
-      cacheKey(url),
-      JSON.stringify({ expiresAt: Date.now() + cacheTtlMilliseconds, result }),
+      url,
+      JSON.stringify({ expiresAt: Date.now() + cacheTtlMilliseconds, result: { ...result, analysis_id: null } }),
     )
   } catch {
     return
@@ -86,15 +102,28 @@ export default function App() {
     result: null,
     message: null,
   })
+  const [reminders, setReminders] = useState<LocalReminder[]>([])
+  const [reminderComposer, setReminderComposer] = useState<ReminderComposer | null>(null)
+  const [reminderNotice, setReminderNotice] = useState<string | null>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [saveToHistory, setSaveToHistory] = useState(false)
+  const [consent, setConsent] = useState(false)
+  const analysisRequest = useRef(0)
+  const contextRequest = useRef(0)
 
   const inspectPage = async () => {
+    const request = ++contextRequest.current
+    ++analysisRequest.current
+    setConsent(false)
     setPageView((current) => ({ status: 'loading', context: current.context }))
 
     try {
       const response = await requestPageContext()
+      if (request !== contextRequest.current) return
       if (response.ok) {
         setPageView({ status: 'ready', context: response.data })
         setAnalysisView({ status: 'idle', result: null, message: null })
+        setReminderComposer(null)
       } else {
         setPageView((current) => ({
           status: 'error',
@@ -103,6 +132,7 @@ export default function App() {
         }))
       }
     } catch {
+      if (request !== contextRequest.current) return
       setPageView((current) => ({
         status: 'error',
         context: current.context,
@@ -113,22 +143,25 @@ export default function App() {
 
   const analyzePage = async (forceRefresh = false) => {
     const context = pageView.context
-    if (!context || analysisView.status === 'loading') return
-
-    if (!forceRefresh) {
-      const cached = loadCachedAnalysis(context.url)
-      if (cached) {
-        setAnalysisView({ status: resultState(cached), result: cached, message: null })
-        return
-      }
-    }
-
+    if (!context || !consent || analysisView.status === 'loading') return
+    const request = ++analysisRequest.current
     setAnalysisView({ status: 'loading', result: null, message: null })
     try {
-      const result = await requestAnalysis(context)
-      saveCachedAnalysis(context.url, result)
+      const key = await cacheKey(context)
+      if (request !== analysisRequest.current) return
+      if (!forceRefresh && !saveToHistory) {
+        const cached = loadCachedAnalysis(key)
+        if (cached) {
+          setAnalysisView({ status: resultState(cached), result: cached, message: null })
+          return
+        }
+      }
+      const result = await requestAnalysis(context, saveToHistory)
+      if (request !== analysisRequest.current) return
+      saveCachedAnalysis(key, result)
       setAnalysisView({ status: resultState(result), result, message: null })
     } catch (error) {
+      if (request !== analysisRequest.current) return
       setAnalysisView({
         status: 'error',
         result: null,
@@ -137,20 +170,90 @@ export default function App() {
     }
   }
 
+  const openReminderComposer = (event: TimelineEvent) => {
+    setReminderNotice(null)
+    setReminderComposer({
+      target: {
+        kind: event.kind,
+        description: timelineEventDescription(event),
+        sourceSectionId: event.source_section_id,
+      },
+      existingReminder: null,
+      idempotencyKey: crypto.randomUUID(),
+    })
+  }
+
+  const saveReminder = async (values: { remindAt: string; timezone: string; eventDescription: string }) => {
+    const context = pageView.context
+    if (!context || !reminderComposer) throw new Error('The active page is unavailable.')
+
+    const response = reminderComposer.existingReminder
+      ? await updateLocalReminder(reminderComposer.existingReminder.id, {
+          remindAt: values.remindAt,
+          timezone: values.timezone,
+          eventDescription: values.eventDescription,
+        })
+      : await createLocalReminder({
+          sourceUrl: context.url,
+          sourceTitle: context.title,
+          eventKind: reminderComposer.target.kind,
+          eventDescription: values.eventDescription,
+          sourceSectionId: reminderComposer.target.sourceSectionId,
+          remindAt: values.remindAt,
+          timezone: values.timezone,
+          idempotencyKey: reminderComposer.idempotencyKey,
+        })
+
+    if (!response.ok) throw new Error(response.error.message)
+    setReminders((current) => {
+      const withoutUpdated = current.filter((reminder) => reminder.id !== response.data.id)
+      return [...withoutUpdated, response.data].sort((left, right) => left.remindAt.localeCompare(right.remindAt))
+    })
+    setReminderComposer(null)
+    setReminderNotice(reminderComposer.existingReminder ? 'Reminder updated in this browser.' : 'Reminder saved in this browser.')
+  }
+
+  const cancelReminder = async (reminder: LocalReminder) => {
+    try {
+      const response = await deleteLocalReminder(reminder.id)
+      if (!response.ok) {
+        setReminderNotice(response.error.message)
+        return
+      }
+      setReminders((current) => current.map((item) => item.id === response.data.id ? response.data : item))
+      setReminderNotice('Reminder cancelled.')
+    } catch {
+      setReminderNotice('The reminder could not be cancelled. Try again.')
+    }
+  }
+
   useEffect(() => {
     let active = true
+    void account.user().then((profile) => { if (active) setUser(profile) }).catch(() => undefined)
+    const unsubscribe = onAccountChange((profile, previous) => {
+      setUser(profile)
+      if (profile && profile.id === previous?.id) return
+      ++analysisRequest.current
+      setSaveToHistory(false)
+      setAnalysisView({ status: 'idle', result: null, message: null })
+    })
+    return () => { active = false; unsubscribe() }
+  }, [])
 
+  useEffect(() => {
+    let active = true
+    const request = ++contextRequest.current
     const loadPageContext = async () => {
       try {
         const response = await requestPageContext()
-        if (!active) return
+        if (!active || request !== contextRequest.current) return
         if (response.ok) {
           setPageView({ status: 'ready', context: response.data })
         } else {
           setPageView({ status: 'error', context: null, message: response.error.message })
         }
       } catch {
-        if (active) {
+        if (active && request === contextRequest.current) {
           setPageView({
             status: 'error',
             context: null,
@@ -163,6 +266,24 @@ export default function App() {
     void loadPageContext()
     return () => { active = false }
   }, [])
+
+  useEffect(() => {
+    const sourceUrl = pageView.context?.url
+    if (!sourceUrl) return
+
+    let active = true
+    void listLocalReminders(sourceUrl).then((response) => {
+      if (!active) return
+      if (response.ok) {
+        setReminders(response.data)
+      } else {
+        setReminderNotice(response.error.message)
+      }
+    }).catch(() => {
+      if (active) setReminderNotice('Saved reminders could not be read.')
+    })
+    return () => { active = false }
+  }, [pageView.context?.url])
 
   const context = pageView.context
   const result = analysisView.status === 'success' || analysisView.status === 'partial' || analysisView.status === 'empty'
@@ -179,6 +300,11 @@ export default function App() {
         </div>
       </header>
 
+      <div className="section-heading">
+        <span className="muted-copy">{user ? `Signed in as ${user.name}` : 'Using guest mode'}</span>
+        <a className="text-button" href={dashboardUrl()} target="_blank" rel="noreferrer">{user ? 'Open dashboard' : 'Sign in / dashboard'}</a>
+      </div>
+
       <section className="page-card" aria-live="polite">
         <p className="eyebrow">ACTIVE PAGE</p>
         <h2>{context?.domain ?? 'Checking active tab...'}</h2>
@@ -188,6 +314,23 @@ export default function App() {
 
       {pageView.status === 'error' && <p className="error-message" role="alert">{pageView.message}</p>}
 
+      <ManualInput key={context?.url ?? 'manual'} sourceUrl={context?.url ?? ''} onUse={(manual) => {
+        ++contextRequest.current; ++analysisRequest.current
+        setPageView({ status: 'ready', context: manual }); setConsent(false)
+        setAnalysisView({ status: 'idle', result: null, message: null }); setReminderComposer(null)
+      }} />
+      {context && <details className="text-review"><summary>Review all text to be sent ({context.textLength.toLocaleString()} characters)</summary>
+        {context.sections.map((section) => <div key={section.section_id}><h3>{section.heading ?? 'Agreement section'}</h3><p>{section.text}</p></div>)}
+      </details>}
+      {!!context?.policyLinks?.length && <details><summary>Linked policies — open and inspect separately</summary><ul>{context.policyLinks.map((link, index) => <li key={index}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>)}</ul></details>}
+      <label className="confirmation-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} disabled={!context || analysisView.status === 'loading'} />I reviewed the text and want to send it for analysis.</label>
+      <p className="disclaimer">Analysis sends the reviewed sections and source URL to your configured backend. If hosted AI is enabled, it forwards them to OpenAI. Guest reports are not saved to your account. Remove personal details before sending.</p>
+
+      {user && <label className="confirmation-check account-save-option">
+        <input type="checkbox" checked={saveToHistory} disabled={analysisView.status === 'loading'} onChange={(event) => setSaveToHistory(event.target.checked)} />
+        Save this analysis to my account. Includes evidence excerpts and commitments.
+      </label>}
+
       <div className="action-row">
         <button className="secondary-button" type="button" onClick={inspectPage} disabled={pageView.status === 'loading'}>
           {pageView.status === 'loading' ? 'Inspecting...' : 'Inspect page'}
@@ -196,7 +339,7 @@ export default function App() {
           className="primary-button"
           type="button"
           onClick={() => void analyzePage(analysisView.status !== 'idle')}
-          disabled={!context || pageView.status === 'loading' || analysisView.status === 'loading'}
+          disabled={!context || !consent || context.sections.length === 0 || pageView.status === 'loading' || analysisView.status === 'loading'}
         >
           {analysisView.status === 'loading' ? 'Analyzing...' : result ? 'Analyze again' : 'Analyze page'}
         </button>
@@ -217,10 +360,41 @@ export default function App() {
         </section>
       )}
 
-      {result && <AnalysisReport result={result} />}
+      {result && <AnalysisReport result={result} onSetReminder={openReminderComposer} />}
+      {result?.analysis_id && <p className="success-message" role="status">Saved to your account history.</p>}
+
+      {reminderComposer && (
+        <ReminderForm
+          key={reminderComposer.idempotencyKey}
+          target={reminderComposer.target}
+          existingReminder={reminderComposer.existingReminder}
+          onCancel={() => setReminderComposer(null)}
+          onSubmit={saveReminder}
+        />
+      )}
+
+      {reminderNotice && <p className="success-message" role="status">{reminderNotice}</p>}
+
+      <ReminderList
+        reminders={reminders}
+        onEdit={(reminder) => {
+          setReminderNotice(null)
+          setReminderComposer({
+            target: {
+              kind: reminder.eventKind,
+              description: reminder.eventDescription,
+              sourceSectionId: reminder.sourceSectionId,
+            },
+            existingReminder: reminder,
+            idempotencyKey: crypto.randomUUID(),
+          })
+        }}
+        onCancel={(reminder) => void cancelReminder(reminder)}
+      />
 
       <p className="disclaimer">
-        This is an informational aid, not legal advice. It can miss clauses or misunderstand incomplete page text.
+        Reminders are stored only in this browser and do not sync with your account.
+        {' '}<a href="./privacy.html" target="_blank" rel="noreferrer">Privacy and limitations</a>
       </p>
     </main>
   )

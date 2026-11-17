@@ -126,6 +126,16 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 
 .error-message { margin: 0; padding: 11px 12px; border-radius: 10px; font-size: 12px; line-height: 1.45; }
 .error-state p { color: inherit; font-size: 12px; line-height: 1.5; }
+.success-message {
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #b8d7c7;
+  border-radius: 10px;
+  background: #edf8f1;
+  color: #236c4b;
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 .loading-state { display: flex; align-items: center; gap: 12px; }
 .loading-state p { margin-bottom: 0; color: #5f6e65; font-size: 12px; }
@@ -220,6 +230,40 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
 .placeholder-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .placeholder-actions button { min-height: 40px; border: 1px dashed #a9bcb0; border-radius: 11px; background: #f8faf8; color: #64766c; }
 
+.reminder-form {
+  padding: 16px;
+  border: 1px solid #b8d7c7;
+  border-radius: 16px;
+  background: #f4fbf6;
+}
+.reminder-form form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.reminder-form label { display: flex; flex-direction: column; gap: 6px; color: #35453b; font-size: 12px; font-weight: 750; }
+.reminder-form input[type='datetime-local'], .reminder-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #a9bcb0;
+  border-radius: 9px;
+  padding: 9px;
+  background: #fff;
+  color: #1d2a24;
+  font: inherit;
+  font-size: 12px;
+}
+.reminder-form textarea { min-height: 64px; resize: vertical; }
+.field-hint { margin: -7px 0 0; color: #5f6e65; font-size: 11px; line-height: 1.4; }
+.confirmation-check { flex-direction: row !important; align-items: flex-start; font-weight: 600 !important; line-height: 1.4; }
+.confirmation-check input { margin: 2px 0 0; }
+.text-button { border: 0; padding: 2px; background: transparent; color: #155e75; cursor: pointer; font-size: 12px; font-weight: 750; text-decoration: underline; }
+.text-button:hover { color: #0f4a5c; }
+
+.reminder-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.reminder-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid #e4e8e3; }
+.reminder-item:first-child { border-top: 0; }
+.reminder-item strong { font-size: 13px; text-transform: capitalize; }
+.reminder-item p { margin: 3px 0 0; color: #5f6e65; font-size: 11px; }
+.reminder-actions { display: flex; gap: 8px; }
+.account-save-option { display: flex; gap: 8px; color: #435149; font-size: 12px; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 380px) {
@@ -227,3 +271,6 @@ button:disabled { cursor: not-allowed; opacity: 0.58; }
   .score-gauge { grid-template-columns: 1fr; }
   .score-details { align-items: flex-start; text-align: left; }
 }
+.manual-input, .text-review { padding: 14px; margin: 14px 0; background: #fffdf9; border: 1px solid #d9ded7; border-radius: 10px; font-size: 13px; }
+.text-review { max-height: 280px; overflow: auto; overflow-wrap: anywhere; }
+.manual-input textarea { min-height: 140px; width: 100%; box-sizing: border-box; }

@@ -16,7 +16,14 @@ def _find_evidence(section_text: str) -> str | None:
     for sentence in re.split(r"(?<=[.!?])\s+", section_text.strip()):
         normalized = sentence.strip()
         lowered = normalized.lower()
-        if "automatically" in lowered or "renews" in lowered or "renewal" in lowered:
+        if re.search(
+            r"renews? automatically|automatic renewal|charged automatically|"
+            r"automatically (?:renews?|charged)|will renew|renews every|renewal is automatic|"
+            r"renews (?:monthly|annually|yearly|weekly)",
+            lowered,
+        ) and not re.search(
+            r"(?:does not|will not|never|no automatic|not automatically|not renew)", lowered
+        ):
             return normalized
     return None
 
@@ -70,7 +77,9 @@ class MockLLMProvider:
                 review_flags.append(
                     ExtractionReviewFlag(
                         code="prompt_injection_detected",
-                        message="Page text contains instruction-like content; it was treated as data.",
+                        message=(
+                            "Page text contains instruction-like content; it was treated as data."
+                        ),
                         source_section_id=section.section_id,
                     )
                 )
@@ -83,7 +92,9 @@ class MockLLMProvider:
                     ExtractedFinding(
                         category="subscription",
                         risk_type="automatic_renewal",
-                        consequence="A recurring charge may begin after the trial unless you cancel.",
+                        consequence=(
+                            "A recurring charge may begin after the trial unless you cancel."
+                        ),
                         severity_candidate="high",
                         evidence_text=evidence,
                         source_section_id=section.section_id,
@@ -117,6 +128,72 @@ class MockLLMProvider:
                         confidence=0.95,
                     )
                 )
+
+            rules = [
+                (
+                    "refund",
+                    "refund_restriction",
+                    "high",
+                    r"(?:not eligible for a refund|non[- ]refundable|no refunds|"
+                    r"refund within \d+ days)",
+                    "Refund eligibility may be limited by the stated conditions.",
+                ),
+                (
+                    "privacy",
+                    "data_collection",
+                    "moderate",
+                    r"(?:we collect .*?(?:identifiers|usage|personal|account)|"
+                    r"share .*?(?:data|information)|process this information)",
+                    "Your information may be collected or processed as described in this clause.",
+                ),
+                (
+                    "commitment",
+                    "minimum_commitment",
+                    "high",
+                    r"(?:minimum .*?(?:term|commitment)|commit to .*?(?:months?|years?)|"
+                    r"bound for \d+)",
+                    "You may remain committed for the minimum period described in this clause.",
+                ),
+                (
+                    "financial",
+                    "additional_fee",
+                    "moderate",
+                    r"(?:late fee|termination fee|processing fee|additional charge)",
+                    "An additional fee may apply under the stated conditions.",
+                ),
+            ]
+            for category, risk_type, severity, pattern, consequence in rules:
+                for sentence in re.split(r"(?<=[.!?])\s+", section.text.strip()):
+                    negated = (
+                        risk_type == "additional_fee"
+                        and re.search(
+                            r"no (?:late|termination|processing) fee|"
+                            r"without .*fee|fee.*not charged",
+                            sentence,
+                            re.IGNORECASE,
+                        )
+                    ) or (
+                        risk_type == "minimum_commitment"
+                        and re.search(
+                            r"no minimum|not bound|no commitment",
+                            sentence,
+                            re.IGNORECASE,
+                        )
+                    )
+                    if re.search(pattern, sentence, re.IGNORECASE) and not negated:
+                        findings.append(
+                            ExtractedFinding(
+                                category=category,
+                                risk_type=risk_type,
+                                consequence=consequence,
+                                severity_candidate=severity,
+                                evidence_text=sentence.strip(),
+                                source_section_id=section.section_id,
+                                source_url=section.source_url,
+                                confidence=0.9,
+                            )
+                        )
+                        break
 
         extraction = StructuredExtraction(
             findings=findings,

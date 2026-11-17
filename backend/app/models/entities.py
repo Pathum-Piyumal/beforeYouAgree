@@ -4,7 +4,19 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
@@ -56,6 +68,7 @@ class Analysis(TimestampMixin, Base):
     risk_band: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     score_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped[User | None] = relationship(back_populates="analyses")
     findings: Mapped[list[Finding]] = relationship(
@@ -117,7 +130,10 @@ class Commitment(TimestampMixin, Base):
 
 class Reminder(TimestampMixin, Base):
     __tablename__ = "reminders"
-    __table_args__ = (Index("ix_reminders_user_remind_at", "user_id", "remind_at"),)
+    __table_args__ = (
+        Index("ix_reminders_user_remind_at", "user_id", "remind_at"),
+        UniqueConstraint("user_id", "idempotency_key", name="uq_reminders_user_request"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
@@ -130,6 +146,10 @@ class Reminder(TimestampMixin, Base):
     channel: Mapped[str] = mapped_column(String(20), default="in_app", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="scheduled", nullable=False)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(80), default="UTC", nullable=False)
+    event_description: Mapped[str] = mapped_column(String(280), default="", nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="reminders")
     commitment: Mapped[Commitment] = relationship(back_populates="reminders")

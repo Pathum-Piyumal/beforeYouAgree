@@ -93,7 +93,9 @@ async def call_provider_with_policy(
             try:
                 response = ProviderResponse.model_validate(raw_response)
             except ValidationError as error:
-                raise ProviderResponseError("Provider returned an invalid structured response") from error
+                raise ProviderResponseError(
+                    "Provider returned an invalid structured response"
+                ) from error
             if response.usage.estimated_cost_usd > max_cost_usd:
                 raise ProviderBudgetError("Provider usage exceeded the configured cost limit")
             return ProviderCallResult(response=response, attempts=attempt)

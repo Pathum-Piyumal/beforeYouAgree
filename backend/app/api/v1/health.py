@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException, status
 from app.core.config import settings
 from app.db.session import database_is_ready
 
-
 router = APIRouter(prefix="/health", tags=["health"])
 
 
