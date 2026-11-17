@@ -4,6 +4,12 @@ The requested target is the user's existing Render account. Account access
 must be connected before its existing projects, services, database and plans
 can be inspected. No deployed URL is implied by this file.
 
+The release source is published on `codex/release-20261117` in
+`Pathum-Piyumal/beforeYouAgree`. Frontend and backend GitHub CI passed for code
+commit `82b0765`, and `render.yaml` passed Render's official JSON Schema
+validation. The Render integration remains uninstalled/unconnected, so the
+account's actual resources and live service URLs have not been inspected.
+
 `render.yaml` is a demo Blueprint for a Docker API, static dashboard and private
 PostgreSQL database in Singapore. It is an option for a new project, not an
 instruction to overwrite an existing account's services. Existing resources

@@ -37,11 +37,19 @@ No production URL or live-model result is claimed.
 | Backend Docker image | Built; readiness, guest-analysis and scheduler smoke checks passed |
 | Complete-stack Compose configuration | Validated without printing secrets |
 | Synthetic mock extraction evaluation | 18 cases; see measured report and limitations |
+| Release-branch GitHub Frontend CI | Passed for code commit `82b0765` |
+| Release-branch GitHub Backend CI | Passed for code commit `82b0765` |
+| Render Blueprint official JSON Schema | Passed; account/resource checks still pending |
 
 Screenshots and build ZIPs with SHA-256 sidecars are generated under `release/`.
 The packaging script includes the backend source/configuration and excludes
-runtime environments and credentials. Local verification does not establish
-that a remote CI run or external deployment has succeeded.
+runtime environments and credentials. The published source is on
+`codex/release-20261117`. Both remote workflows for code commit `82b0765` passed:
+[Frontend CI](https://github.com/Pathum-Piyumal/beforeYouAgree/actions/runs/44011432581)
+and [Backend CI](https://github.com/Pathum-Piyumal/beforeYouAgree/actions/runs/44011432395).
+Render's official JSON Schema accepts the Blueprint. This does not verify
+account access, resource availability, existing-service compatibility or a
+successful external deployment.
 
 ## Engineering decisions
 
